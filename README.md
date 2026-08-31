@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31649269/README.md)
+[README.md](https://github.com/user-attachments/files/31649735/README.md)
 # sql-server-assessment
 
 Read-only queries for working out what is actually true about a SQL Server
@@ -111,10 +111,15 @@ where you find out why.
 |---|---|
 | `DBCC DBINFO` | When CHECKDB last completed cleanly (`dbi_dbccLastKnownGood`) |
 | `DBCC CHECKDB` | The corruption check itself — **commented out, expensive** |
+| `RESTORE VERIFYONLY` | Whether the backup file is present, complete, and checksum-clean — **commented out, reads the whole file** |
+| `RESTORE FILELISTONLY` / `HEADERONLY` | What is inside a `.bak` — logical names, sizes, when and by whom it was taken |
 | Job history | Which Agent jobs have been failing, and for how long |
 | Job list | Which jobs exist, and whether they are enabled and scheduled |
 | Server principals | Who has access, and through which roles |
-| Backup check | Back up file inspection |
+
+`02_backup_history.sql` reports what SQL Server recorded. 
+The RESTORE commands here read the actual file, which is what closes the gap between 
+a backup that exists in history and one that exists on disk.
 
 `dbi_dbccLastKnownGood` showing 1900-01-01 means CHECKDB has never run cleanly.
 Corruption nobody checks for gets found by users, by which point the good
