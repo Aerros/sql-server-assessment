@@ -42,11 +42,11 @@
  On a real server this is a decision, not a step. FULL recovery commits you to
  scheduling log backups; skip them and the log grows until the disk fills.
 */
--- ALTER DATABASE AdventureWorks2022 SET RECOVERY FULL;                --!REPLACE
---
--- BACKUP DATABASE AdventureWorks2022                                  --!REPLACE
---     TO DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'  --!REPLACE
---     WITH INIT, CHECKSUM, COMPRESSION, STATS = 10;
+ --ALTER DATABASE AdventureWorks2022 SET RECOVERY FULL;                --!REPLACE
+
+ --BACKUP DATABASE AdventureWorks2022                                  --!REPLACE
+ --    TO DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'  --!REPLACE
+ --    WITH INIT, CHECKSUM, COMPRESSION, STATS = 10;
 
 
 /*
@@ -65,6 +65,10 @@ WHERE name = N'AdventureWorks2022';                                    --!REPLAC
  Take a transaction log backup.
  Errors if no full backup exists yet - that is the pseudo-simple behaviour
  above. Worth triggering deliberately once so you recognise the message.
+
+CHECKSUM — verifies each page as it's read and writes a checksum over the whole backup.
+COMPRESSION — compresses the backup as it's written. Smaller file.
+STATS = 10 — purely cosmetic. Prints progress to the Messages tab every 10 percent.
 */
 -- BACKUP LOG AdventureWorks2022                                       --!REPLACE
 --     TO DISK = N'C:\SQLBackups\AdventureWorks2022\LOG\AW_log.trn'    --!REPLACE
