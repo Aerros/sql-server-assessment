@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31650075/README.md)
+[README.md](https://github.com/user-attachments/files/31658519/README.md)
 # sql-server-assessment
 
 Read-only queries for working out what is actually true about a SQL Server
@@ -18,20 +18,7 @@ and need evidence before you change anything.
 Thresholds are declared at the top of each file rather than buried in a `CASE`,
 so the assumptions are visible.
 
-## Files
-
-### `00_lab_setup.sql` — practice environment
-
-Gets a sample database into a state where full, differential, and log backups
-can all be exercised. **Everything that writes is commented out.**
-
-Covers the pseudo-simple trap: `ALTER DATABASE ... SET RECOVERY FULL` does not
-start the log chain. The first full backup does, and until then log backups
-fail with an error that does not obviously say why.
-
-Prerequisites are listed in the file header — folders created by hand, and
-Modify rights granted to the SQL Server service account.
-
+## Root
 ### `01_instance_orientation.sql` — what is this server?
 
 | Query | Establishes |
@@ -145,3 +132,34 @@ they like, including off-network. Backup files carry no security of their own.
 Performance, indexing, wait statistics, high availability, and configuration
 review. This answers "is the data safe and is anything broken," which is the
 first question, not the only one.
+
+## Practice Folder 
+~~~
+This folder holds exercises against a sample database. Everything here writes. Not for real servers.
+~~~
+
+### `L00_lab_setup.sql` — practice environment 1
+
+Gets a sample database into a state where full, differential, and log backups
+can all be exercised. **Everything that writes is commented out.**
+
+Covers the pseudo-simple trap: `ALTER DATABASE ... SET RECOVERY FULL` does not
+start the log chain. The first full backup does, and until then log backups
+fail with an error that does not obviously say why.
+
+Prerequisites are listed in the file header — folders created by hand, and
+Modify rights granted to the SQL Server service account.
+
+
+### `L01_point_in_time.sql` — practice environment 2
+
+Recovers a row that was inserted and then deleted, by restoring to a moment
+between the two. **Restores to a new database name — never over the original.**
+
+Deliberately takes only **one** log backup, containing both the insert and the
+delete, so `STOPAT` has to stop partway through a log rather than at its end.
+Backing up the log between the two operations would let you stop at a file
+boundary and skip the feature entirely.
+
+Two things that bite: `NORECOVERY` on every restore except the last, and `MOVE`
+is required because the original database still holds its files.
