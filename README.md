@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31649735/README.md)
+[README.md](https://github.com/user-attachments/files/31650075/README.md)
 # sql-server-assessment
 
 Read-only queries for working out what is actually true about a SQL Server
@@ -59,6 +59,7 @@ Beyond checking dates, it catches:
 | `backup_to_nul` | The backup "succeeded" and the file went nowhere. In Full recovery it also truncated the log, silently breaking the chain |
 | `foreign_backup` | The newest full was taken by a *different instance* — history that arrived with a restore, meaning no local backup exists |
 | `never_backed_up` | No backup history on this instance at all |
+| `pseudo_simple` | Full recovery but no full backup ever taken, so the log chain never started — reports FULL, behaves as SIMPLE, and point-in-time recovery does not exist |
 | `damaged` | The backup completed but was flagged damaged |
 | `latest_full_copy_only` | `COPY_ONLY` cannot base a differential, so a full-plus-diff restore plan is broken |
 | `no_checksum` | Corruption can be written into the backup with nothing noticing |
