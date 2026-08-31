@@ -32,7 +32,7 @@ fail with an error that does not obviously say why.
 Prerequisites are listed in the file header — folders created by hand, and
 Modify rights granted to the SQL Server service account.
 
-### `01_server_and_database_config_review.sql` — what is this server?
+### `01_instance_orientation.sql` — what is this server?
 
 | Query | Establishes |
 |---|---|
