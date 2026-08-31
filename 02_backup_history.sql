@@ -16,7 +16,7 @@
  Last backup of each type, per database.
  Read this against file 01:
    - FULL recovery with a NULL last_log  -> the log will grow until the disk fills
-   - Database missing from this list entirely -> never backed up, ever
+   - Database with NULL in all three date columns, or just the last 2 NULL, has never been backed up on this instance. -> never backed up, ever
    - last_full older than your tolerance -> the schedule is not doing what
      someone thinks it is
 */
