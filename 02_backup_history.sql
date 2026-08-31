@@ -21,17 +21,36 @@
      someone thinks it is
 */
 SELECT
-    d.name                                          AS database_name,
-    d.recovery_model_desc,
-    MAX(CASE WHEN b.type = 'D' THEN b.backup_finish_date END) AS last_full,
-    MAX(CASE WHEN b.type = 'I' THEN b.backup_finish_date END) AS last_differential,
-    MAX(CASE WHEN b.type = 'L' THEN b.backup_finish_date END) AS last_log
-FROM sys.databases AS d
-LEFT JOIN msdb.dbo.backupset AS b
-       ON b.database_name = d.name
-WHERE d.name <> 'tempdb'                    /* tempdb is never backed up */
-GROUP BY d.name, d.recovery_model_desc
-ORDER BY d.name;
+    d.name                                                      AS database_name
+,   d.recovery_model_desc
+,   MAX(CASE WHEN b.type = 'D' THEN b.backup_finish_date END)   AS last_full
+,   MAX(CASE WHEN b.type = 'I' THEN b.backup_finish_date END)   AS last_differential
+,   MAX(CASE WHEN b.type = 'L' THEN b.backup_finish_date END)   AS last_log
+,   CASE
+    WHEN 
+        MAX(CASE WHEN b.type = 'D' THEN b.backup_finish_date END) IS NULL
+        THEN 'NEVER BACKED UP'
+    WHEN 
+        d.recovery_model_desc = 'FULL'
+    AND MAX(CASE WHEN b.type = 'L' THEN b.backup_finish_date END) IS NULL
+    THEN 'FULL recovery, no log backup - log will grow until disk fills'
+    WHEN 
+        MAX(CASE WHEN b.type = 'D' THEN b.backup_finish_date END) < DATEADD(DAY, -7, GETDATE())
+    THEN 'Last full over 7 days old'
+    ELSE 'OK'
+    END                                                         AS concern
+FROM 
+    sys.databases AS d
+LEFT JOIN 
+    msdb.dbo.backupset AS b
+    ON b.database_name = d.name
+WHERE 
+    d.name <> 'tempdb'
+GROUP BY 
+    d.name
+,   d.recovery_model_desc
+ORDER BY 
+    d.name;
 
 
 /*
