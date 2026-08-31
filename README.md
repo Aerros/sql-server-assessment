@@ -1,54 +1,111 @@
-[README.md](https://github.com/user-attachments/files/31624899/README.md)
-# SQL Server assessment queries
+[README.md](https://github.com/user-attachments/files/31649269/README.md)
+# sql-server-assessment
 
-A first-pass assessment of a SQL Server instance you did not build, plus a lab
-file for practising backup strategies safely.
+Read-only queries for working out what is actually true about a SQL Server
+instance you did not build, plus a lab file for practising backup strategies.
 
 Written for the situation where you inherit a server with thin documentation
-and need to establish what is actually true before changing anything.
+and need evidence before you change anything.
+
+## Conventions
+
+| Marker | Meaning |
+|---|---|
+| `--!REPLACE` | A value to set before running — usually a database name, path, or threshold |
+| `!OPT:` | In query output: this action depends on a decision the query cannot make |
+| No prefix | In query output: this action is correct regardless of policy |
+
+Thresholds are declared at the top of each file rather than buried in a `CASE`,
+so the assumptions are visible.
 
 ## Files
 
-Run them in order. Each answers a different question.
+### `00_lab_setup.sql` — practice environment
 
-### `01_server_and_database_config.sql` — what is this server?
+Gets a sample database into a state where full, differential, and log backups
+can all be exercised. **Everything that writes is commented out.**
+
+Covers the pseudo-simple trap: `ALTER DATABASE ... SET RECOVERY FULL` does not
+start the log chain. The first full backup does, and until then log backups
+fail with an error that does not obviously say why.
+
+Prerequisites are listed in the file header — folders created by hand, and
+Modify rights granted to the SQL Server service account.
+
+### `01_server_and_database_config_review.sql` — what is this server?
 
 | Query | Establishes |
 |---|---|
-| Version and edition | Which patch level, and whether features you might use are even licensed |
-| `sys.databases` | Every database's state, recovery model, and what is blocking log reuse |
+| Version and edition | Patch level, and whether features you might use are licensed |
+| `sys.databases` | Each database's state, recovery model, and what blocks log reuse |
 | `sys.master_files` | Where files live, how large, and how they grow |
 
-The one to read carefully is the recovery model column. **FULL recovery with no
-log backups means the transaction log grows until the disk fills.** You cannot
-conclude that from this file alone — it tells you the recovery model, and file
-02 tells you whether log backups exist. The finding is in the combination.
+Read the recovery model column against file 02. **Full recovery with no log
+backups means the transaction log grows until the disk fills** — but this file
+only tells you the recovery model. The finding lives in the combination.
 
-Also watch for data and log files on the same physical disk, and anything
-sitting on C.
+Also watch for data and log files sharing a disk, percentage autogrowth, and
+anything sitting on C.
 
-### `02_backup_history.sql` — are we actually backed up?
+### `02_backup_history.sql` — is there a usable backup?
 
-| Query | Establishes |
+The main query. One row per database, with evidence columns, eleven concern
+flags, a `first_action`, and an `all_concerns` summary, sorted worst-first.
+
+Beyond checking dates, it catches:
+
+| Flag | Why it matters |
 |---|---|
-| Last backup per type | When each database was last backed up full, differential, and log |
-| `restorehistory` | Whether anyone has ever restored anything on this instance |
-| Backup detail per database | Where backups are physically landing, and how long they take |
+| `backup_to_nul` | The backup "succeeded" and the file went nowhere. In Full recovery it also truncated the log, silently breaking the chain |
+| `foreign_backup` | The newest full was taken by a *different instance* — history that arrived with a restore, meaning no local backup exists |
+| `never_backed_up` | No backup history on this instance at all |
+| `damaged` | The backup completed but was flagged damaged |
+| `latest_full_copy_only` | `COPY_ONLY` cannot base a differential, so a full-plus-diff restore plan is broken |
+| `no_checksum` | Corruption can be written into the backup with nothing noticing |
+| `backup_on_data_drive` | One disk failure takes the database and its backups together |
+| `full_recovery_no_log` | The log grows until the disk fills |
+| `stale_full` / `stale_log` | Older than the declared tolerance |
+| `not_online` | Cannot be backed up in its current state |
 
-The premise: **a backup job existing is not evidence. History is.** Jobs get
-disabled, targets fill up, databases get added to a server and never added to
-the job's database list.
+**The premise: a backup job existing is not evidence. History is.** Jobs get
+disabled, targets fill, databases get added to a server and never added to the
+job's database list.
 
-Three things to look for:
+**Known limit.** This reports what SQL Server *recorded*, not what exists on
+disk now. A path on a decommissioned file server looks identical to a live one.
+Only `RESTORE VERIFYONLY` — or an actual restore — closes that gap.
 
-- A database absent from the results entirely — never backed up, ever
-- `last_log` NULL on a FULL recovery database — the file 01 time bomb, confirmed
-- `restorehistory` returning nothing — nobody has proven the backups restore
+**Performance.** `ROW_NUMBER` sorts within each database/type partition. Index
+`backupset` to match and the sort disappears:
 
-That last one is usually empty, and the emptiness is the point. A backup that
-has never been restored is a hypothesis.
+```sql
+CREATE NONCLUSTERED INDEX IX_backupset_db_type_finish
+    ON msdb.dbo.backupset (database_name, type, backup_finish_date DESC);
+```
 
-### `03_health_and_access.sql` — is it intact and is anything failing?
+Trimming history with `sp_delete_backuphistory` is worthwhile housekeeping, but
+it is not the fix for this query being slow.
+
+### `03_restore_history.sql` — has a restore ever been proven?
+
+Every restore performed on this instance, joined back to the backup it came
+from, so each row is traceable rather than just a timestamp.
+
+On most servers this returns nothing, and **the emptiness is the finding.** A
+backup that has never been restored is a hypothesis.
+
+Note: it records restores done *on this instance*. A restore performed
+elsewhere from these files leaves no trace here.
+
+### `04_backup_detail.sql` — drill down on one database
+
+Full backup history for a single database, including device paths, duration,
+sizes, and the copy-only / checksum / damaged flags.
+
+**02 flags, 04 explains.** When the assessment query raises something, this is
+where you find out why.
+
+### `05_health_checks.sql` — is it intact, and is anything failing?
 
 | Query | Establishes |
 |---|---|
@@ -59,39 +116,25 @@ has never been restored is a hypothesis.
 | Server principals | Who has access, and through which roles |
 
 `dbi_dbccLastKnownGood` showing 1900-01-01 means CHECKDB has never run cleanly.
-Corruption that nobody checks for gets found by users instead, at which point
-the good backups may already have aged out.
+Corruption nobody checks for gets found by users, by which point the good
+backups may have aged out.
 
 The job list matters separately from job history: a **disabled** backup job is a
 very quiet way to have no backups, and it produces no failure history at all.
 
 On access — anyone in `sysadmin` can issue `BACKUP` and write the file wherever
-they like, including off-network. Backup files carry no security of their own;
-anyone holding one can read everything in it.
-
-### `99_lab_backup_practice` — practice environment
-
-Numbered 99 because it sorts last and is not for real servers.
-
-Gets a sample database into a state where full, differential, and log backups
-can all be exercised. Covers the pseudo-simple trap: `ALTER DATABASE ... SET
-RECOVERY FULL` does not start the log chain — the first full backup does, and
-until then log backups fail.
-
-Everything that writes is commented out.
+they like, including off-network. Backup files carry no security of their own.
 
 ## Safety
 
-- **Files 01 and 02** are read-only and cheap. Safe to run whole.
-- **File 03** is read-only, but `DBCC CHECKDB` can run for hours. It is
-  commented out for that reason.
-- **File 99** writes. Every write is commented out.
-- `--!REPLACE` marks anything to change before running.
+- Files **01–05** are read-only. `DBCC CHECKDB` in 05 is read-only but can run
+  for hours, so it is commented out.
+- File **00** writes. Every write is commented out.
 - In SSMS, **Ctrl+Shift+E** runs only the selected text. Worth making a habit
-  before you ever open these against something that matters.
+  before opening any of these against something that matters.
 
 ## What this does not cover
 
-Performance, indexing, wait stats, high availability, and configuration review.
-This answers "is the data safe and is anything broken," which is the first
-question, not the only one.
+Performance, indexing, wait statistics, high availability, and configuration
+review. This answers "is the data safe and is anything broken," which is the
+first question, not the only one.
