@@ -114,6 +114,7 @@ where you find out why.
 | Job history | Which Agent jobs have been failing, and for how long |
 | Job list | Which jobs exist, and whether they are enabled and scheduled |
 | Server principals | Who has access, and through which roles |
+| Backup check | Back up file inspection |
 
 `dbi_dbccLastKnownGood` showing 1900-01-01 means CHECKDB has never run cleanly.
 Corruption nobody checks for gets found by users, by which point the good
