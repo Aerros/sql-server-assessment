@@ -70,17 +70,14 @@ GO
 
 
 /*==============================================================================
- STEP 4 - Record the safe point, then wait
+ STEP 4 - Record the safe point, wait, then delete
 
- GETDATE() returns datetime, which is what STOPAT accepts.
- Do NOT use SYSDATETIME() - it returns datetime2 with 7 decimal places, and
- STOPAT rejects it with "Invalid value specified for STOPAT parameter."
+ Select all four go-batches and run them together. The WAITFOR guarantees a
+ 30-second gap between the insert and the delete, so STOPAT has an easy
+ target instead of a one-second window.
 
- Copy the value below. You need it in STEP 7b.
-
- The 30 second wait just widens the gap between the insert and the delete so
- STOPAT has an easy target. Without it you would be aiming at a one-second
- window.
+ Copy the safe_point value from the results. You need it in 7c.
+ GETDATE() not SYSDATETIME() - STOPAT rejects 7 decimal places.
 ==============================================================================*/
 
 SELECT GETDATE() AS safe_point;     /* <-- COPY THIS. Format: 2026-08-31 15:14:10 */
@@ -88,14 +85,6 @@ GO
 
 WAITFOR DELAY '00:00:30';
 GO
-
-
-/*==============================================================================
- STEP 5 - The accident
-
- DELETE logs every row individually, which is what makes it recoverable to a
- point in time. (TRUNCATE TABLE is minimally logged and behaves differently.)
-==============================================================================*/
 
 DELETE FROM dbo.PITR_Demo;
 GO
@@ -197,7 +186,7 @@ GO
 RESTORE LOG AW_PITR_Test
     FROM DISK = N'C:\SQLBackups\AdventureWorks2022\LOG\AW_pitr_log.trn'
     WITH
-        STOPAT = '2026-08-31 15:14:10',     --!REPLACE with the value from STEP 4
+        STOPAT = '2026-08-31 15:19:29',     --!REPLACE with the value from STEP 4
         RECOVERY,
         STATS = 10;
 GO
@@ -215,8 +204,8 @@ GO
 /*==============================================================================
  STEP 9 - Clean up
 
- The restored copy gets a deadline, then it goes. Otherwise it lives forever
- and you back it up and run CHECKDB against it every night.
+ The restored copy gets a communicated deadline so the requester can take data from it, then it goes. 
+ Otherwise it lives forever and you back it up and run CHECKDB against it every night.
 ==============================================================================*/
 
 -- DROP DATABASE AW_PITR_Test;
