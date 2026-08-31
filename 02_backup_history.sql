@@ -154,6 +154,12 @@ flagged AS (
         *,
         CASE WHEN last_full IS NULL
              THEN 1 ELSE 0 END AS f_never_backed_up,
+        
+        /* FULL recovery but no full backup has ever been taken here, so the
+           log chain has not started. The database reports FULL and behaves as
+           SIMPLE. Anyone assuming point-in-time recovery is wrong. */
+        CASE WHEN recovery_model_desc = 'FULL' AND last_full IS NULL
+             THEN 1 ELSE 0 END AS f_pseudo_simple,
 
         CASE WHEN state_desc <> 'ONLINE'
              THEN 1 ELSE 0 END AS f_not_online,
@@ -218,6 +224,10 @@ actioned AS (
         CASE WHEN f_never_backed_up = 1
              THEN 'Take a full backup now. This database has never been backed up here.'
              END AS a_never_backed_up,
+
+        CASE WHEN f_pseudo_simple = 1
+             THEN 'Take a full backup to start the log chain. Until then this database reports FULL but behaves as SIMPLE.'
+             END AS a_pseudo_simple,
 
         CASE WHEN f_not_online = 1
              THEN 'Investigate the database state before anything else.'
@@ -286,6 +296,7 @@ SELECT
     COALESCE(
         a_backup_to_nul,
         a_never_backed_up,
+        a_pseudo_simple,
         a_not_online,
         a_damaged,
         a_foreign_backup,
@@ -301,6 +312,7 @@ SELECT
     CONCAT_WS('; ',
         a_backup_to_nul,
         a_never_backed_up,
+        a_pseudo_simple,
         a_not_online,
         a_damaged,
         a_foreign_backup,
@@ -315,6 +327,7 @@ SELECT
     /* ---------- scannable flags ---------- */
     CASE WHEN f_backup_to_nul         = 1 THEN 'YES' ELSE '' END AS backup_to_nul,
     CASE WHEN f_never_backed_up       = 1 THEN 'YES' ELSE '' END AS never_backed_up,
+    CASE WHEN f_pseudo_simple         = 1 THEN 'YES' ELSE '' END AS pseudo_simple,
     CASE WHEN f_not_online            = 1 THEN 'YES' ELSE '' END AS not_online,
     CASE WHEN f_damaged               = 1 THEN 'YES' ELSE '' END AS damaged,
     CASE WHEN f_foreign_backup        = 1 THEN 'YES' ELSE '' END AS foreign_backup,
@@ -326,7 +339,7 @@ SELECT
     CASE WHEN f_no_checksum           = 1 THEN 'YES' ELSE '' END AS no_checksum,
 
     /* ---------- sortable severity ---------- */
-    f_backup_to_nul + f_never_backed_up + f_not_online + f_damaged
+    f_backup_to_nul + f_never_backed_up + f_pseudo_simple + f_not_online + f_damaged
       + f_foreign_backup + f_full_no_log + f_stale_full
       + f_latest_full_copy_only + f_stale_log + f_backup_on_data_drive
       + f_no_checksum                       AS concern_count
