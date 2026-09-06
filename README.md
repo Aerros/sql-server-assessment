@@ -1,29 +1,30 @@
-[README.md](https://github.com/user-attachments/files/31884076/README.md)
 # sql-server-assessment
 
 Queries for working out what is actually true about a SQL Server instance you
-did not build, exercises for learning the mechanics by hand, and the automation
-settings I use once I know what needs fixing.
+did not build, exercises for learning the mechanics by hand, the automation
+settings used once something needs fixing, and the procedures for when
+something breaks anyway.
 
-Written for the situation where you inherit a server with thin documentation and
-need evidence before you change anything.
+Written for the situation where you inherit a server with thin documentation
+and need evidence before you change anything.
 
 ## How the folders fit together
 
-    assess/     what is broken
-    lab/        what the fix does, by hand, on a database you can break
-    maintain/   the fix, automated
-    assess/     run it again and watch the flags clear
+    assess/       what is broken
+    lab/          what the fix does, by hand, on a database you can break
+    maintenance/  the fix, automated
+    assess/       run it again and watch the flags clear
+    runbooks/     what to do when the fix fails anyway, plus drills that test each procedure
 
-That last step is the point. If automation is set up correctly, the assessment
+The middle loop is the point. If automation is set up correctly, the assessment
 output changes. If it doesn't, something wasn't finished.
 
 | Folder | Writes? | Safe on a real server? |
 |---|---|---|
 | `assess/` | No | Yes. Read-only throughout |
 | `lab/` | Yes | **No.** Sample databases only |
-| `maintain/` | Yes | Yes, once you have chosen the settings |
-| `runbooks/` | what to do when something breaks, plus the drills that test each procedure |
+| `maintenance/` | Yes | Yes, once you have chosen the settings |
+| `runbooks/` | Drills write. The runbooks themselves are documents, not code | Runbooks: yes. Drills: sample databases only |
 
 ## Conventions
 
@@ -32,6 +33,7 @@ output changes. If it doesn't, something wasn't finished.
 | `--!REPLACE` | A value to set before running — a database name, path, or threshold |
 | `!OPT:` | In query output: this action depends on a decision the query cannot make |
 | No prefix | In query output: this action is correct regardless of policy |
+| `<!-- -->` | In runbooks: a prompt to fill in, invisible in preview. Search for `<!--` before calling a runbook finished |
 
 Thresholds are declared at the top of each file rather than buried in a `CASE`,
 so the assumptions are visible.
@@ -199,16 +201,19 @@ The shape worth remembering, since the syntax you look up:
     4. The last one                       STOPAT + RECOVERY
     5. Always to a new name, with MOVE for each file
 
+This is also the drill for `runbooks/RUNBOOK_02_oops_query.md`.
+
 ---
 
-# maintain/
+# maintenance/
 
-Calls to Ola Hallengren's maintenance solution — the settings I actually use.
+Calls to Ola Hallengren's maintenance solution — the settings actually used
+here.
 
 **Ola's script is not in this repo, deliberately.** It is roughly 5,000 lines he
 maintains and updates. Install from `ola.hallengren.com`; don't vendor a copy
-that will drift. What lives here is the part that is mine: which parameters I
-chose, and why.
+that will drift. What lives here is the part that's mine: which parameters were
+chosen, and why.
 
 The script itself documents almost nothing — the parameter reference is entirely
 on the website:
@@ -228,7 +233,8 @@ and is not — which `02_backup_history.sql` would then flag as
 `@CleanupTime` is in **hours**. 168 = one week. It is a policy decision, marked
 `--!REPLACE`. SQL Server can only express "delete files older than N", so tiered
 retention — weekly for six weeks, monthly for six months — is out of scope for
-the tool and has to be solved elsewhere.
+the tool and has to be solved elsewhere. See `runbooks/RUNBOOK_00_recovery_planning.md`
+section 3 for how the number is derived rather than guessed.
 
 `@Verify` runs `RESTORE VERIFYONLY` after each backup. Good by default; skip it
 on very large databases or very many of them, where it roughly doubles job
@@ -246,13 +252,39 @@ files rather than by `WITH INIT`.
 
 ---
 
+# runbooks/
+
+Procedures for when a backup, a bad query, or corruption actually happens, plus
+the drills that test each one against a database built to break.
+
+| File | Use it for |
+|---|---|
+| `RUNBOOK_00_recovery_planning.md` | RPO/RTO, tooling inventory, retention, contacts. **Read this first — everything else assumes it exists** |
+| `RUNBOOK_01_backup_strategy.md` | Designing and standing up backups on a server that has none |
+| `RUNBOOK_02_oops_query.md` | Someone ran the wrong statement; the database is otherwise healthy |
+| `RUNBOOK_03_corruption.md` | The data is wrong at the page level |
+| `DRILL_backup_strategy.md` | Exercise for 01 |
+| `DRILL_corruption.md` | Exercise for 03, with five variants covering each recovery branch |
+
+The drill for 02 is `lab/L01_point_in_time.sql`.
+
+**Why runbooks instead of memorized commands:** restore and recovery syntax is
+not meant to be recalled under pressure. What professionals keep instead is a
+written procedure, produced while calm and proven against a database they
+deliberately broke. Full reasoning and reading order: `runbooks/README.md`.
+
+---
+
 ## Safety
 
 - `assess/` is read-only throughout. `DBCC CHECKDB` in 05 is read-only but can
   run for hours, so it is commented out, as is `RESTORE VERIFYONLY`.
 - `lab/` writes. Every write is commented out. Sample databases only.
-- `maintain/` writes, and sets up recurring work. Read the parameter reference
-  before running anything here against a real server.
+- `maintenance/` writes, and sets up recurring work. Read the parameter
+  reference before running anything here against a real server.
+- `runbooks/` procedures are read-only as documents; the SQL inside them
+  writes and is meant to be run during an actual incident or a drill, not
+  casually.
 - In SSMS, **Ctrl+Shift+E** runs only the selected text. Worth making a habit
   before opening any of these against something that matters.
 
