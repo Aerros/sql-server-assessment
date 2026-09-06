@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/31884954/README.md)
 # runbooks/
 
 Recovery procedures for a SQL Server instance, plus the drills that test them.
@@ -23,6 +22,13 @@ front to back — land where the arrow points.
 
 ```mermaid
 flowchart TD
+    ROUTINE([No incident —<br/>just checking health]) --> HC1[assess/01_instance_orientation.sql]
+    HC1 --> HC2[assess/02_backup_history.sql]
+    HC2 --> HC3[assess/05_health_checks.sql]
+    HC3 --> HC4{Any flags?}
+    HC4 -- No --> HC5([Done. Re-run on<br/>a schedule.])
+    HC4 -- Yes --> Q0
+
     START([Something is wrong]) --> Q0{Is RUNBOOK_00<br/>filled in?}
 
     Q0 -- No, and no incident yet --> R00[RUNBOOK_00<br/>Fill sections 1–2 first]
