@@ -9,7 +9,6 @@
                - DBCC CHECKDB       can run for hours on a large database
                - RESTORE VERIFYONLY reads an entire backup file end to end
  Run when:   First contact, then on a recurring basis.
-
  Conventions:
    --!REPLACE   set this before running
 ================================================================================
@@ -24,12 +23,23 @@
 
 /*
  When did CHECKDB last complete cleanly on this database?
- Look for the row: dbi_dbccLastKnownGood
- A date of 1900-01-01 means it has never run cleanly - which is the finding.
+
+ EXPECT: one row, one column, a single datetime value.
+   A recent date  = good, CHECKDB has run and passed.
+   1900-01-01     = never run cleanly. This is a finding, not an error.
+
  Corruption nobody checks for gets found by users, by which point the good
  backups may already have aged out.
+
+ Alternative if you want the full property dump instead of just this one
+ value: DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;
+ Look for the row named dbi_dbccLastKnownGood in the results grid.
 */
-DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;              --!REPLACE
+SELECT
+    DATABASEPROPERTYEX(
+        'AdventureWorks2022',       --!REPLACE
+        'LastGoodCheckDbTime'
+    ) AS LastKnownGoodCheckDBDate;
 
 
 /*
@@ -37,8 +47,15 @@ DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;              --!REPLACE
  Read-only, but hours of runtime and heavy I/O on a large database.
  Run off-hours, or against a restored copy on another server - which has the
  side benefit of testing the restore at the same time.
+
+ EXPECT:
+   CLEAN RESULT:  Just "Commands completed successfully." Nothing above it.
+   BAD RESULT:    Error rows (e.g. "Msg 8909...") listed BEFORE that same
+                  completion line. The command ALWAYS says "completed" -
+                  that line alone does not mean the database is healthy.
+                  Presence of error rows above it is the actual signal.
 */
--- DBCC CHECKDB (N'AdventureWorks2022') WITH NO_INFOMSGS, ALL_ERRORMSGS;  --!REPLACE
+DBCC CHECKDB (N'AdventureWorks2022') WITH NO_INFOMSGS, ALL_ERRORMSGS;  --!REPLACE
 
 
 /*
@@ -58,8 +75,11 @@ DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;              --!REPLACE
  Does NOT catch: a structurally valid backup of an already-corrupt database.
  CHECKSUM on the way out plus VERIFYONLY afterwards is the difference between
  a verified backup and a file that merely exists.
-
  Still not a restore test. Only a restore is a restore test.
+
+ EXPECT: one line of text.
+   "The backup set on file 1 is valid."      = good
+   An error (e.g. file not found, checksum mismatch)  = bad, read the message
 */
 -- RESTORE VERIFYONLY
 --     FROM DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'  --!REPLACE
@@ -68,18 +88,26 @@ DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;              --!REPLACE
 
 /*
  What is inside a .bak file?
- FILELISTONLY  - logical file names and sizes, so you can plan MOVE clauses
- HEADERONLY    - when it was taken, by which server, type, size, whether
-                 COPY_ONLY, whether compressed
+
+ FILELISTONLY returns one row per file inside the backup (usually 2: data + log).
+ ONLY LOOK AT THESE 2 COLUMNS, ignore the rest (~20 others):
+   LogicalName    e.g. AdventureWorks2022, AdventureWorks2022_log
+   PhysicalName   where the file lived on the machine that made the backup
+
+ HEADERONLY returns one row describing the backup operation itself.
+ ONLY LOOK AT THESE 3 COLUMNS, ignore the rest (~30 others):
+   BackupType         1 = full, 2 = log
+   BackupFinishDate   when the backup completed
+   ServerName         machine that made it
 
  Run these before restoring a backup someone handed you, to confirm it is what
  they said it is. Cheap - they read the header, not the whole file.
 */
--- RESTORE FILELISTONLY
---     FROM DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'; --!REPLACE
---
--- RESTORE HEADERONLY
---     FROM DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'; --!REPLACE
+RESTORE FILELISTONLY
+    FROM DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'; --!REPLACE
+
+RESTORE HEADERONLY
+    FROM DISK = N'C:\SQLBackups\AdventureWorks2022\FULL\AW_seed.bak'; --!REPLACE
 
 
 /*
@@ -91,6 +119,12 @@ DBCC DBINFO (N'AdventureWorks2022') WITH TABLERESULTS;              --!REPLACE
 /*
  Agent job outcomes, most recent first.
  run_status: 0 failed, 1 succeeded, 2 retry, 3 cancelled, 4 in progress.
+
+ EXPECT: one row per job run. Read the "outcome" column.
+   All "Succeeded"    = good
+   Any "Failed"       = a finding - open that job's step history to see why
+   No rows at all     = no jobs have ever run, or none are set up yet
+
  A job failing quietly for months is common. Absence of failure emails is not
  evidence of success - somebody has to actually be receiving them.
 */
@@ -115,6 +149,13 @@ ORDER BY h.run_date DESC, h.run_time DESC;
 
 /*
  Which jobs exist at all, and are they enabled and scheduled?
+
+ EXPECT: one row per job.
+   job_enabled = 1 and schedule_enabled = 1   = normal, will run
+   job_enabled = 0                            = a finding - silently disabled
+   schedule_name is NULL                      = job has no schedule attached,
+                                                 will never run on its own
+
  A DISABLED backup job is a very quiet way to have no backups - it produces
  no failure history, so the query above cannot see it.
 */
@@ -141,6 +182,12 @@ ORDER BY j.name;
 
 /*
  Who has access at the server level, and through which roles?
+
+ EXPECT: one row per login/user/group on the instance.
+   server_role = 'sysadmin' is the one to scrutinize - that principal can do
+   absolutely anything, including reading or moving backup files.
+   is_disabled = 1 means that login currently cannot connect at all.
+
  Anyone in sysadmin can issue BACKUP and write the file anywhere they like,
  including off-network. Backup files carry no security of their own - whoever
  holds one can read everything in it.
